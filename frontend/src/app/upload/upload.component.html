@@ -1,0 +1,201 @@
+<div class="upload-container">
+  <h1 class="title">📦 Carga Masiva de Inventario</h1>
+  <p class="subtitle">Sube tu archivo Excel (.xlsx) para previsualizar y aplicar cambios al inventario</p>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: IDLE — Zona de carga -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (currentState === UploadState.IDLE) {
+    <div
+      class="dropzone"
+      [class.dragging]="isDragging"
+      (dragover)="onDragOver($event)"
+      (dragleave)="onDragLeave($event)"
+      (drop)="onDrop($event)"
+    >
+      <div class="dropzone-content">
+        <span class="dropzone-icon">📂</span>
+        <p class="dropzone-text">Arrastra y suelta tu archivo aquí</p>
+        <p class="dropzone-or">— o —</p>
+        <label class="btn btn-primary" for="fileInput">Seleccionar archivo</label>
+        <input
+          id="fileInput"
+          type="file"
+          accept=".xlsx"
+          (change)="onFileSelected($event)"
+          hidden
+        />
+        <p class="dropzone-hint">Solo archivos .xlsx</p>
+      </div>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: UPLOADING — Cargando -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (currentState === UploadState.UPLOADING) {
+    <div class="loading-section">
+      <div class="spinner"></div>
+      <p class="loading-text">Procesando archivo <strong>{{ selectedFile?.name }}</strong>...</p>
+      <p class="loading-subtext">Analizando filas y validando datos</p>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: PREVIEW — Vista previa de operaciones -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (currentState === UploadState.PREVIEW && dryRunResponse) {
+    <div class="preview-section">
+      <!-- Resumen -->
+      <div class="summary-cards">
+        <div class="summary-card total">
+          <span class="summary-number">{{ dryRunResponse.summary.total }}</span>
+          <span class="summary-label">Total filas</span>
+        </div>
+        <div class="summary-card insert">
+          <span class="summary-number">{{ dryRunResponse.summary.toInsert }}</span>
+          <span class="summary-label">Nuevos</span>
+        </div>
+        <div class="summary-card update">
+          <span class="summary-number">{{ dryRunResponse.summary.toUpdate }}</span>
+          <span class="summary-label">Actualizar</span>
+        </div>
+        <div class="summary-card error">
+          <span class="summary-number">{{ dryRunResponse.summary.errors }}</span>
+          <span class="summary-label">Errores</span>
+        </div>
+      </div>
+
+      <!-- Tabla de detalles -->
+      <div class="table-wrapper">
+        <table class="preview-table">
+          <thead>
+            <tr>
+              <th>Fila</th>
+              <th>SKU</th>
+              <th>Nombre</th>
+              <th>Categoría</th>
+              <th>Acción</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of dryRunResponse.details; track row.row) {
+              <tr [class]="'row-' + row.action.toLowerCase()">
+                <td>{{ row.row }}</td>
+                <td class="sku-cell">{{ row.sku }}</td>
+                <td>{{ row.nombre }}</td>
+                <td>{{ row.categoria }}</td>
+                <td>
+                  <span class="badge" [class]="'badge-' + row.action.toLowerCase()">
+                    {{ row.action }}
+                  </span>
+                </td>
+                <td class="detail-cell">
+                  @if (row.action === 'INSERT' && row.data) {
+                    Stock: {{ row.data['stock'] }} | Color: {{ row.data['color'] }} | Modelo: {{ row.data['modelo'] }}
+                  }
+                  @if (row.action === 'UPDATE' && row.changes?.['stock']) {
+                    Stock: {{ row.changes['stock'].old }} → {{ row.changes['stock'].new }}
+                  }
+                  @if (row.action === 'ERROR' && row.errors) {
+                    @for (err of row.errors; track err) {
+                      <span class="error-msg">⚠ {{ err }}</span>
+                    }
+                  }
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Botones de acción -->
+      <div class="actions">
+        <button class="btn btn-secondary" (click)="onCancelUpload()">
+          ✕ Cancelar
+        </button>
+        @if (hasValidRows) {
+          <button class="btn btn-success" (click)="onConfirmClick()">
+            ✓ Confirmar y Ejecutar ({{ validRows.length }} operaciones)
+          </button>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- DIÁLOGO DE DOBLE CONFIRMACIÓN -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (showConfirmDialog) {
+    <div class="dialog-overlay" (click)="onCancelConfirm()">
+      <div class="dialog" (click)="$event.stopPropagation()">
+        <h3 class="dialog-title">⚠️ Confirmar Ejecución</h3>
+        <p class="dialog-text">
+          Estás a punto de ejecutar
+          <strong>{{ dryRunResponse?.summary?.toInsert }} inserciones</strong> y
+          <strong>{{ dryRunResponse?.summary?.toUpdate }} actualizaciones</strong>
+          en la base de datos.
+        </p>
+        <p class="dialog-warning">Esta acción no se puede deshacer.</p>
+        <div class="dialog-actions">
+          <button class="btn btn-secondary" (click)="onCancelConfirm()">Cancelar</button>
+          <button class="btn btn-danger" (click)="onDoubleConfirm()">Sí, ejecutar ahora</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: COMMITTING — Ejecutando -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (currentState === UploadState.COMMITTING) {
+    <div class="loading-section">
+      <div class="spinner"></div>
+      <p class="loading-text">Ejecutando operaciones en la base de datos...</p>
+      <p class="loading-subtext">No cierres esta ventana</p>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: RESULT — Resultado final -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (currentState === UploadState.RESULT && commitResponse) {
+    <div class="result-section" [class.result-success]="commitResponse.success" [class.result-fail]="!commitResponse.success">
+      <span class="result-icon">{{ commitResponse.success ? '✅' : '❌' }}</span>
+      <h2 class="result-title">{{ commitResponse.success ? 'Inventario actualizado' : 'Error en la ejecución' }}</h2>
+      <p class="result-message">{{ commitResponse.message }}</p>
+
+      @if (commitResponse.success) {
+        <div class="result-stats">
+          <div class="result-stat">
+            <span class="result-stat-number">{{ commitResponse.summary.inserted }}</span>
+            <span class="result-stat-label">Insertados</span>
+          </div>
+          <div class="result-stat">
+            <span class="result-stat-number">{{ commitResponse.summary.updated }}</span>
+            <span class="result-stat-label">Actualizados</span>
+          </div>
+        </div>
+      }
+
+      <button class="btn btn-primary" (click)="onNewUpload()">
+        📂 Cargar otro archivo
+      </button>
+    </div>
+  }
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- ESTADO: ERROR -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  @if (currentState === UploadState.ERROR) {
+    <div class="error-section">
+      <span class="error-icon">❌</span>
+      <h2 class="error-title">Error</h2>
+      <p class="error-detail">{{ errorMessage }}</p>
+      <button class="btn btn-primary" (click)="onRetry()">
+        🔄 Reintentar
+      </button>
+    </div>
+  }
+</div>
