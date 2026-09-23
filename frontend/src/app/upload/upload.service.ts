@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { Observable, timeout } from 'rxjs';
 import { DryRunResponse, CommitResponse } from './models/upload.models';
 
 @Injectable({
@@ -17,7 +17,7 @@ export class UploadService {
   uploadFile(file: File): Observable<DryRunResponse> {
     const formData = new FormData();
     formData.append('file', file);
-    return this.http.post<DryRunResponse>(this.apiUrl, formData);
+    return this.http.post<DryRunResponse>(this.apiUrl, formData).pipe(timeout(30000));
   }
 
   /**
@@ -26,6 +26,6 @@ export class UploadService {
   commitUpload(previewToken: string): Observable<CommitResponse> {
     return this.http.post<CommitResponse>(`${this.apiUrl}/commit`, {
       previewToken,
-    });
+    }).pipe(timeout(30000));
   }
 }

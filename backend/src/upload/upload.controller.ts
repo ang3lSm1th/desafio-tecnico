@@ -23,24 +23,41 @@ export class UploadController {
   async dryRun(
     @UploadedFile() file: Express.Multer.File,
   ): Promise<DryRunResponseDto> {
+    console.log(`📥 [POST /api/upload] Archivo recibido: "${file?.originalname}" | Tamaño: ${file?.size ?? 0} bytes`);
+
     if (!file) {
+      console.warn('⚠️ [POST /api/upload] No se proporcionó ningún archivo');
       throw new BadRequestException('No se proporcionó ningún archivo');
     }
 
-
     const originalName = file.originalname.toLowerCase();
     if (!originalName.endsWith('.xlsx')) {
+      console.warn(`⚠️ [POST /api/upload] Formato no permitido: "${file.originalname}"`);
       throw new BadRequestException(
         'El archivo debe ser un Excel con extensión .xlsx',
       );
     }
 
-    return this.uploadService.dryRun(file.buffer);
+    try {
+      const result = await this.uploadService.dryRun(file.buffer);
+      console.log(`✅ [POST /api/upload] DryRun exitoso: ${result.summary.total} filas analizadas`);
+      return result;
+    } catch (error) {
+      console.error('❌ [POST /api/upload] Error durante dryRun:', error);
+      throw error;
+    }
   }
-
 
   @Post('commit')
   async commit(@Body() body: CommitRequestDto): Promise<CommitResponseDto> {
-    return this.uploadService.commit(body.previewToken);
+    console.log(`📥 [POST /api/upload/commit] PreviewToken recibido: "${body?.previewToken}"`);
+    try {
+      const result = await this.uploadService.commit(body.previewToken);
+      console.log(`✅ [POST /api/upload/commit] Commit finalizado: ${result.message}`);
+      return result;
+    } catch (error) {
+      console.error('❌ [POST /api/upload/commit] Error durante commit:', error);
+      throw error;
+    }
   }
 }

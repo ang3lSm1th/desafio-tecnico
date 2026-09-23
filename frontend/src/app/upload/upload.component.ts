@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   UploadState,
@@ -30,7 +30,10 @@ export class UploadComponent {
   // ── Drag & Drop ──
   isDragging: boolean = false;
 
-  constructor(private uploadService: UploadService) {}
+  constructor(
+    private uploadService: UploadService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   // =========================================================================
   //  TRANSICIONES DE ESTADO
@@ -41,6 +44,7 @@ export class UploadComponent {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
       this.selectedFile = input.files[0];
+      input.value = ''; // Permite volver a seleccionar el mismo archivo si es necesario
       this.startUpload();
     }
   }
@@ -80,16 +84,33 @@ export class UploadComponent {
 
     this.currentState = UploadState.UPLOADING;
     this.errorMessage = '';
+    this.cdr.detectChanges();
+
+    console.log('🚀 [UploadComponent] Enviando archivo:', this.selectedFile.name);
 
     this.uploadService.uploadFile(this.selectedFile).subscribe({
       next: (response) => {
+        console.log('✅ [UploadComponent] Respuesta DryRun:', response);
         this.dryRunResponse = response;
         this.currentState = UploadState.PREVIEW;
+        this.cdr.detectChanges();
       },
       error: (err) => {
-        this.errorMessage =
-          err.error?.message || err.message || 'Error al procesar el archivo';
+        console.error('❌ [UploadComponent] Error en uploadFile:', err);
+        const serverMsg = err.error?.message;
+        if (Array.isArray(serverMsg)) {
+          this.errorMessage = serverMsg.join('. ');
+        } else if (typeof serverMsg === 'string') {
+          this.errorMessage = serverMsg;
+        } else if (err.status === 0) {
+          this.errorMessage = 'No se pudo conectar con el backend en http://localhost:3000. Revisa que el backend esté corriendo y la base de datos conectada.';
+        } else if (err.message) {
+          this.errorMessage = err.message;
+        } else {
+          this.errorMessage = 'Error inesperado al procesar el archivo.';
+        }
         this.currentState = UploadState.ERROR;
+        this.cdr.detectChanges();
       },
     });
   }
@@ -97,11 +118,13 @@ export class UploadComponent {
   /** PREVIEW → muestra diálogo de confirmación */
   onConfirmClick(): void {
     this.showConfirmDialog = true;
+    this.cdr.detectChanges();
   }
 
   /** Diálogo → cancela la confirmación */
   onCancelConfirm(): void {
     this.showConfirmDialog = false;
+    this.cdr.detectChanges();
   }
 
   /** Diálogo → COMMITTING: confirma y ejecuta */
@@ -111,18 +134,35 @@ export class UploadComponent {
     if (!this.dryRunResponse) return;
 
     this.currentState = UploadState.COMMITTING;
+    this.cdr.detectChanges();
+
+    console.log('🚀 [UploadComponent] Confirmando commit con token:', this.dryRunResponse.previewToken);
 
     this.uploadService
       .commitUpload(this.dryRunResponse.previewToken)
       .subscribe({
         next: (response) => {
+          console.log('✅ [UploadComponent] Respuesta Commit:', response);
           this.commitResponse = response;
           this.currentState = UploadState.RESULT;
+          this.cdr.detectChanges();
         },
         error: (err) => {
-          this.errorMessage =
-            err.error?.message || err.message || 'Error al ejecutar el commit';
+          console.error('❌ [UploadComponent] Error en commitUpload:', err);
+          const serverMsg = err.error?.message;
+          if (Array.isArray(serverMsg)) {
+            this.errorMessage = serverMsg.join('. ');
+          } else if (typeof serverMsg === 'string') {
+            this.errorMessage = serverMsg;
+          } else if (err.status === 0) {
+            this.errorMessage = 'No se pudo conectar con el backend en http://localhost:3000 al intentar guardar los cambios.';
+          } else if (err.message) {
+            this.errorMessage = err.message;
+          } else {
+            this.errorMessage = 'Error al ejecutar la confirmación en la base de datos.';
+          }
           this.currentState = UploadState.ERROR;
+          this.cdr.detectChanges();
         },
       });
   }
@@ -149,6 +189,7 @@ export class UploadComponent {
     this.commitResponse = null;
     this.errorMessage = '';
     this.showConfirmDialog = false;
+    this.cdr.detectChanges();
   }
 
   // =========================================================================

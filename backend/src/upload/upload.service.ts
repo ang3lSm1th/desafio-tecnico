@@ -40,7 +40,9 @@ export class UploadService {
   ) { }
 
   async dryRun(fileBuffer: Buffer): Promise<DryRunResponseDto> {
+    console.log('🔄 [UploadService] Iniciando procesamiento de Excel...');
     const rows = this.parseExcel(fileBuffer);
+    console.log(`📊 [UploadService] Filas leídas del archivo: ${rows.length}`);
 
     if (rows.length === 0) {
       throw new BadRequestException(
@@ -236,8 +238,15 @@ export class UploadService {
 
   private parseExcel(buffer: Buffer): ExcelRow[] {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
+    if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+      throw new BadRequestException('El archivo Excel no contiene hojas de cálculo');
+    }
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
+
+    if (!sheet) {
+      throw new BadRequestException('La primera hoja del archivo Excel está vacía');
+    }
 
     const rawData: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet, {
       defval: null,
